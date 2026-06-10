@@ -397,6 +397,9 @@
         <div id="histList"></div>
         <div class="actions" id="exportWrap" style="display:none">
           <button class="btn btn-ghost" id="copyBtn">Copia riepilogo per il PT</button>
+          <button class="btn btn-primary" id="exportBtn">Esporta scheda finita</button>
+          <button class="btn btn-ghost" id="importBtn">Importa backup</button>
+          <input type="file" id="importFile" accept="application/json,.json" style="display:none">
         </div>
       </div>
     </div>
@@ -781,6 +784,66 @@ try{ var raw=localStorage.getItem(KEY); store.data = raw?JSON.parse(raw):[]; }ca
 if(!store.ok){ document.getElementById('lsWarn').style.display='block'; }
 function persist(){ if(!store.ok) return; try{ localStorage.setItem(KEY, JSON.stringify(store.data)); }catch(e){} }
 
+/* ---------- BOZZA (autosave sessione in corso) ---------- */
+var DRAFT_KEY='rebuild_strength_draft_v1';
+function readForm(){
+  var entries=[];
+  [].forEach.call(document.querySelectorAll('#logForm .log-ex'),function(box){
+    var sets=[];
+    [].forEach.call(box.querySelectorAll('.set-line'),function(line){
+      sets.push({ w:line.querySelector('.w').value.trim(), r:line.querySelector('.r').value.trim() });
+    });
+    entries.push({ name:box.dataset.ex, sets:sets });
+  });
+  return { day:state.day, date:(document.getElementById('sessDate')||{}).value||'',
+           feeling:state.feeling, note:document.getElementById('sessNote').value, entries:entries };
+}
+function saveDraft(){ if(!store.ok) return; try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(readForm())); }catch(e){} }
+function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
+function restoreDraftInto(){
+  var raw; try{ raw=localStorage.getItem(DRAFT_KEY); }catch(e){ return; }
+  if(!raw) return;
+  var d; try{ d=JSON.parse(raw); }catch(e){ return; }
+  if(!d || d.day!==state.day || !d.entries) return;
+  var byName={}; d.entries.forEach(function(e){ byName[e.name]=e.sets; });
+  [].forEach.call(document.querySelectorAll('#logForm .log-ex'),function(box){
+    var sets=byName[box.dataset.ex]; if(!sets) return;
+    var lines=box.querySelectorAll('.set-line');
+    for(var i=0;i<lines.length && i<sets.length;i++){
+      if(sets[i].w) lines[i].querySelector('.w').value=sets[i].w;
+      if(sets[i].r) lines[i].querySelector('.r').value=sets[i].r;
+    }
+  });
+  if(d.note) document.getElementById('sessNote').value=d.note;
+  if(d.feeling){
+    state.feeling=d.feeling;
+    [].forEach.call(fs.children,function(b){ b.classList.toggle('on', b.dataset.f===d.feeling); });
+  }
+}
+
+/* ---------- DEDUP per giorno ---------- */
+function setCount(sets){
+  var c=0; if(!sets) return 0;
+  sets.forEach(function(s){ if(s && (s.w||s.r)) c++; });
+  return c;
+}
+function sessCompleteness(s){
+  var c=0; (s.entries||[]).forEach(function(e){ c+=setCount(e.sets); });
+  return c;
+}
+function dedupeByDay(sessions){
+  var best={};
+  sessions.forEach(function(s){
+    var k=s.date||('id'+s.id);
+    if(!best[k]){ best[k]=s; return; }
+    var a=sessCompleteness(s), b=sessCompleteness(best[k]);
+    if(a>b || (a===b && (s.id||0)>(best[k].id||0))) best[k]=s;
+  });
+  var out=Object.keys(best).map(function(k){ return best[k]; });
+  out.sort(function(x,y){ return (y.id||0)-(x.id||0); });
+  return out;
+}
+
 var state={ day:'A', feeling:'' };
 
 function toast(msg){
@@ -804,7 +867,7 @@ dt.value=new Date().toISOString().slice(0,10);
 var fs=document.getElementById('feelingSeg');
 [].forEach.call(fs.children,function(b){
   b.onclick=function(){ [].forEach.call(fs.children,function(x){x.classList.remove('on');});
-    b.classList.add('on'); state.feeling=b.dataset.f; };
+    b.classList.add('on'); state.feeling=b.dataset.f; saveDraft(); };
 });
 
 /* date format dd/mm/yyyy */
@@ -860,8 +923,15 @@ function buildForm(){
       '<div class="sets-row">'+rows+'</div>';
     form.appendChild(wrap);
   });
+  restoreDraftInto();
 }
 buildForm();
+
+var _draftT;
+function scheduleDraft(){ clearTimeout(_draftT); _draftT=setTimeout(saveDraft, 400); }
+document.getElementById('logForm').addEventListener('input', scheduleDraft);
+document.getElementById('sessNote').addEventListener('input', scheduleDraft);
+document.getElementById('sessDate').addEventListener('change', scheduleDraft);
 
 /* save */
 document.getElementById('saveBtn').onclick=function(){
@@ -878,7 +948,7 @@ document.getElementById('saveBtn').onclick=function(){
   if(!entries.length){ toast('Inserisci almeno un dato'); return; }
   var sess={ id:Date.now(), date:dt.value, day:state.day, dayTitle:DAYS[state.day].title,
     feeling:state.feeling, note:document.getElementById('sessNote').value.trim(), entries:entries };
-  store.data.unshift(sess); persist(); renderHist();
+  store.data.unshift(sess); store.data=dedupeByDay(store.data); clearDraft(); persist(); renderHist();
   document.getElementById('sessNote').value=''; state.feeling='';
   [].forEach.call(fs.children,function(x){x.classList.remove('on');});
   buildForm();
@@ -887,6 +957,7 @@ document.getElementById('saveBtn').onclick=function(){
 };
 
 document.getElementById('resetBtn').onclick=function(){
+  clearDraft();
   buildForm(); document.getElementById('sessNote').value=''; state.feeling='';
   [].forEach.call(fs.children,function(x){x.classList.remove('on');});
 };
@@ -900,7 +971,7 @@ function sessLine(s){
 function renderHist(){
   var list=document.getElementById('histList');
   var exp=document.getElementById('exportWrap');
-  if(!store.data.length){ list.innerHTML='<div class="empty">Ancora nessuna sessione registrata.</div>'; exp.style.display='none'; return; }
+  if(!store.data.length){ list.innerHTML='<div class="empty">Ancora nessuna sessione registrata.</div>'; exp.style.display='flex'; return; }
   exp.style.display='flex';
   list.innerHTML='';
   store.data.forEach(function(s){
@@ -920,6 +991,51 @@ function renderHist(){
   });
 }
 renderHist();
+
+/* ---------- EXPORT (snapshot completo) ---------- */
+function buildSnapshot(){
+  return { app:'rebuild-strength', version:3, exportedAt:new Date().toISOString(), sessions:store.data };
+}
+function pad2(n){ return (n<10?'0':'')+n; }
+function exportFileName(){
+  var d=new Date();
+  return 'rebuild-strength-'+d.getFullYear()+'-'+pad2(d.getMonth()+1)+'-'+pad2(d.getDate())+
+         '-'+pad2(d.getHours())+pad2(d.getMinutes())+'.json';
+}
+function exportData(){
+  if(!store.data.length){ toast('Nessuna sessione da esportare'); return; }
+  var blob=new Blob([JSON.stringify(buildSnapshot(),null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');
+  a.href=url; a.download=exportFileName();
+  document.body.appendChild(a); a.click();
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },0);
+  toast('Esportato ✓');
+}
+document.getElementById('exportBtn').onclick=exportData;
+
+/* ---------- IMPORT ---------- */
+function importData(file){
+  var reader=new FileReader();
+  reader.onload=function(){
+    var parsed;
+    try{ parsed=JSON.parse(reader.result); }catch(e){ toast('File non valido'); return; }
+    if(!parsed || parsed.app!=='rebuild-strength' || !Array.isArray(parsed.sessions)){
+      toast('Non è un backup di Rebuild Strength'); return;
+    }
+    var ok=window.confirm('Sostituire lo storico attuale ('+store.data.length+
+      ' sessioni) con il backup ('+parsed.sessions.length+' sessioni)?');
+    if(!ok) return;
+    store.data=dedupeByDay(parsed.sessions); persist(); renderHist(); buildForm();
+    toast('Importate '+store.data.length+' sessioni ✓');
+  };
+  reader.readAsText(file);
+}
+document.getElementById('importBtn').onclick=function(){ document.getElementById('importFile').click(); };
+document.getElementById('importFile').onchange=function(){
+  if(this.files && this.files[0]) importData(this.files[0]);
+  this.value='';
+};
 
 /* copy summary for coach */
 document.getElementById('copyBtn').onclick=function(){
