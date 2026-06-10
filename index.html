@@ -1009,7 +1009,7 @@ function exportData(){
   var a=document.createElement('a');
   a.href=url; a.download=exportFileName();
   document.body.appendChild(a); a.click();
-  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },0);
+  setTimeout(function(){ document.body.removeChild(a); URL.revokeObjectURL(url); },2000); // iOS: non revocare il blob prima che il download lo legga
   toast('Esportato ✓');
 }
 document.getElementById('exportBtn').onclick=exportData;
