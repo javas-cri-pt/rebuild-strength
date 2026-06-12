@@ -314,6 +314,27 @@
   footer{margin-top:46px;padding-top:22px;border-top:1px solid var(--line);text-align:center;color:var(--ink-faint);font-size:12.5px}
   footer b{color:var(--ink-dim)}
 
+  .view-stats{padding:22px 0 0}
+  .stats-empty{text-align:center;color:var(--ink-faint);font-size:14.5px;font-style:italic;padding:34px 16px}
+  .stat-card{border:1px solid var(--line);border-radius:18px;background:var(--bg2);padding:18px 18px 16px;box-shadow:var(--shadow)}
+  .sc-title{font-family:'Fraunces',serif;font-weight:600;font-size:19px;margin-bottom:14px}
+  .sc-title.block{margin:26px 4px 12px}
+  .reg-grid{display:flex;gap:10px;text-align:center}
+  .reg-grid>div{flex:1;background:var(--card);border:1px solid var(--line);border-radius:13px;padding:13px 6px}
+  .reg-grid b{display:block;font-family:'Anton',sans-serif;font-size:26px;color:var(--ember-2);line-height:1}
+  .reg-grid span{font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint)}
+  .reg-weeks{margin-top:14px;display:flex;flex-direction:column;gap:4px}
+  .reg-weeks small{color:var(--ink-faint);font-size:11px}
+  .spark{width:100%;height:30px;display:block}
+  .ex-stat{border:1px solid var(--line);border-radius:14px;background:var(--card);padding:13px 15px;margin-bottom:9px}
+  .es-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+  .es-name{font-size:15px;font-weight:700}
+  .es-pct{font-size:13px;font-weight:700;color:var(--ink-faint)}
+  .es-pct.up{color:var(--sage)} .es-pct.down{color:#E0876C}
+  .es-mid{margin:8px 0}
+  .es-mid .spark{height:26px}
+  .es-bot{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-faint)}
+  .es-bot b{color:var(--ink-dim);font-weight:600}
   @keyframes rise{to{opacity:1;transform:translateY(0)}}
 
   /* ---------- PRINT → documento chiaro completo ---------- */
@@ -1065,6 +1086,105 @@ document.getElementById('importFile').onchange=function(){
   if(this.files && this.files[0]) importData(this.files[0]);
   this.value='';
 };
+
+/* ---------- STATS ENGINE (funzioni pure) ---------- */
+function statNum(v){ var n=parseFloat(v); return isNaN(n)?null:n; }
+function topSet(entry){
+  var best=null;
+  (entry.sets||[]).forEach(function(s){
+    var w=statNum(s.w), r=statNum(s.r);
+    if(w===null) return;
+    if(!best || w>best.w || (w===best.w && (r||0)>(best.r||0))) best={w:w, r:(r||0)};
+  });
+  return best;
+}
+function epley1RM(w, r){ return Math.round(w*(1+(r||0)/30)); }
+function exerciseSeries(sessions){
+  var map={};
+  sessions.forEach(function(s){
+    (s.entries||[]).forEach(function(e){
+      var t=topSet(e); if(!t) return;
+      (map[e.name]=map[e.name]||[]).push({ date:s.date, id:s.id, w:t.w, r:t.r, e1rm:epley1RM(t.w,t.r) });
+    });
+  });
+  Object.keys(map).forEach(function(k){
+    map[k].sort(function(a,b){ return (a.date<b.date?-1:a.date>b.date?1:(a.id||0)-(b.id||0)); });
+  });
+  return map;
+}
+function pctChange(series){
+  if(!series || series.length<2) return null;
+  var f=series[0].w, l=series[series.length-1].w;
+  if(!f) return null;
+  return Math.round((l-f)/f*100);
+}
+function daysBetween(a, b){ return Math.round((a-b)/86400000); }
+function regularity(sessions){
+  if(!sessions.length) return { total:0, daysSinceLast:null, perWeek4:0, weeks:[0,0,0,0,0,0] };
+  var today=new Date(); today.setHours(0,0,0,0);
+  var dates=sessions.filter(function(s){return s.date;}).map(function(s){ return new Date(s.date+'T00:00:00'); });
+  var lastT=Math.max.apply(null, dates.map(function(d){return d.getTime();}));
+  var last28=0;
+  dates.forEach(function(d){ var diff=daysBetween(today,d); if(diff>=0 && diff<28) last28++; });
+  var weeks=[];
+  for(var wk=5; wk>=0; wk--){
+    var c=0;
+    dates.forEach(function(d){ var diff=daysBetween(today,d); if(diff>=wk*7 && diff<(wk+1)*7) c++; });
+    weeks.push(c);
+  }
+  return { total: sessions.length, daysSinceLast: daysBetween(today, new Date(lastT)),
+           perWeek4: Math.round(last28/4*10)/10, weeks: weeks };
+}
+
+/* ---------- STATS RENDER ---------- */
+function sparkline(vals, w, h){
+  if(!vals.length) return '';
+  var min=Math.min.apply(null,vals), max=Math.max.apply(null,vals), span=(max-min)||1, n=vals.length;
+  if(n===1){ return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">'+
+    '<circle cx="'+(w/2)+'" cy="'+(h/2)+'" r="2.5" fill="var(--ember-2)"/></svg>'; }
+  var pts=vals.map(function(v,i){
+    var x=(i/(n-1))*w, y=h-((v-min)/span)*(h-4)-2;
+    return x.toFixed(1)+','+y.toFixed(1);
+  }).join(' ');
+  return '<svg class="spark" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none">'+
+    '<polyline points="'+pts+'" fill="none" stroke="var(--ember-2)" stroke-width="2" '+
+    'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+}
+function renderStats(){
+  var root=document.getElementById('viewStats');
+  if(!store.data.length){
+    root.innerHTML='<div class="stats-empty">Allenati e salva una sessione: qui vedrai i tuoi progressi 📈</div>';
+    return;
+  }
+  var reg=regularity(store.data);
+  var html='<div class="stat-card">'+
+    '<div class="sc-title">Costanza</div>'+
+    '<div class="reg-grid">'+
+      '<div><b>'+reg.perWeek4+'</b><span>sess./sett.</span></div>'+
+      '<div><b>'+(reg.daysSinceLast===null?'—':reg.daysSinceLast)+'</b><span>gg dall\'ultimo</span></div>'+
+      '<div><b>'+reg.total+'</b><span>totali</span></div>'+
+    '</div>'+
+    '<div class="reg-weeks">'+sparkline(reg.weeks,160,30)+'<small>ultime 6 settimane</small></div>'+
+  '</div>';
+  var series=exerciseSeries(store.data);
+  var names=Object.keys(series);
+  html+='<div class="sc-title block">Progressione per esercizio</div>';
+  if(!names.length){ html+='<div class="stats-empty">Salva qualche carico per vedere le progressioni.</div>'; }
+  names.forEach(function(name){
+    var s=series[name], pct=pctChange(s), last=s[s.length-1];
+    var vals=s.map(function(p){return p.w;});
+    var pctTxt=pct===null?'—':(pct>0?'+':'')+pct+'%';
+    var pctCls=pct===null?'':(pct>0?'up':(pct<0?'down':''));
+    html+='<div class="ex-stat">'+
+      '<div class="es-top"><span class="es-name">'+name+'</span>'+
+        '<span class="es-pct '+pctCls+'">'+pctTxt+'</span></div>'+
+      '<div class="es-mid">'+sparkline(vals,150,26)+'</div>'+
+      '<div class="es-bot"><span>ultimo <b>'+last.w+'×'+last.r+'</b></span>'+
+        '<span>stima 1RM <b>'+last.e1rm+' kg</b></span></div>'+
+    '</div>';
+  });
+  root.innerHTML=html;
+}
 
 /* copy summary for coach */
 document.getElementById('copyBtn').onclick=function(){
