@@ -1,6 +1,6 @@
-var CACHE = 'rebuild-strength-v3';
+var CACHE = 'rebuild-strength-v4';
 var ASSETS = [
-  '.', 'index.html', 'manifest.json',
+  '.', 'index.html', 'manifest.json', 'bodymap.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'
 ];
 self.addEventListener('install', function(e){

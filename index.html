@@ -335,6 +335,23 @@
   .es-mid .spark{height:26px}
   .es-bot{display:flex;justify-content:space-between;font-size:12.5px;color:var(--ink-faint)}
   .es-bot b{color:var(--ink-dim);font-weight:600}
+  .bodytoggle{display:flex;gap:6px;background:var(--bg2);border:1px solid var(--line);border-radius:11px;padding:4px;margin-bottom:14px}
+  .bodytoggle .bt{flex:1;background:none;border:none;color:var(--ink-dim);font-family:inherit;font-weight:700;font-size:13px;padding:8px;border-radius:8px;cursor:pointer;transition:.16s}
+  .bodytoggle .bt.on{background:var(--ember);color:#fff}
+  .bodywrap{display:flex;justify-content:center}
+  .bodysvg{width:auto;height:300px;max-width:100%}
+  .mz{stroke:var(--bg);stroke-width:.4;transition:fill .2s}
+  .mz[data-group]{cursor:pointer}
+  .mz.neutral{fill:var(--line-soft);pointer-events:none}
+  .mz.sel{stroke:var(--gold);stroke-width:1.1}
+  .bodylegend{display:flex;justify-content:center;gap:16px;margin-top:12px;font-size:11.5px;color:var(--ink-faint)}
+  .bodylegend i{display:inline-block;width:11px;height:11px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+  .bodylegend .molto{background:var(--ember)}
+  .bodylegend .poco{background:rgba(234,94,43,.42)}
+  .bodylegend .mai{background:rgba(234,94,43,.10);border:1px solid var(--line)}
+  .muscle-detail{margin-top:14px}
+  .muscle-detail:empty{display:none}
+  .md-title{font-family:'Fraunces',serif;font-weight:600;font-size:16px;margin:4px 0 10px;color:var(--gold)}
   @keyframes rise{to{opacity:1;transform:translateY(0)}}
 
   /* ---------- PRINT → documento chiaro completo ---------- */
@@ -628,6 +645,7 @@
 
 <div class="toast" id="toast"></div>
 
+<script src="bodymap.js"></script>
 <script>
 /* ---------- ILLUSTRATIONS (stylized, monoline) ---------- */
 var S='stroke="var(--ember)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" fill="none"';
@@ -1137,6 +1155,113 @@ function regularity(sessions){
            perWeek4: Math.round(last28/4*10)/10, weeks: weeks };
 }
 
+/* ---------- MUSCLE ENGINE ---------- */
+var EXMAP={
+  'Leg Press o Goblet Squat':['quadricipiti','glutei'],
+  'Chest Press macchina o Panca Manubri':['petto'],
+  'Leg Extension':['quadricipiti'],
+  'Lat Machine presa neutra':['schiena'],
+  'Bulgarian Split Squat':['quadricipiti','glutei'],
+  'Alzate Laterali':['spalle'],
+  'Dead Bug':['core'],
+  'Hip Thrust':['glutei'],
+  'Rematore supportato o macchina':['schiena'],
+  'Push-up inclinati o Chest Press leggera':['petto'],
+  'Step-up':['quadricipiti','glutei'],
+  'Leg Curl':['femorali'],
+  'Face Pull':['spalle','schiena'],
+  'Curl Manubri':['bicipiti'],
+  'Hack Squat o Squat guidato':['quadricipiti','glutei'],
+  'Panca inclinata Manubri':['petto'],
+  'Trazioni assistite':['schiena','bicipiti'],
+  'Affondi camminati':['quadricipiti','glutei'],
+  'Cable Row':['schiena'],
+  'Shoulder Press leggera':['spalle'],
+  'Push Down ai cavi':['tricipiti']
+};
+function exVolume(entry){ var v=0; (entry.sets||[]).forEach(function(s){ var w=statNum(s.w),r=statNum(s.r); if(w!==null&&r!==null) v+=w*r; }); return v; }
+function groupActivity(sessions, days){
+  var today=new Date(); today.setHours(0,0,0,0); var act={};
+  sessions.forEach(function(s){
+    if(!s.date) return;
+    var diff=daysBetween(today, new Date(s.date+'T00:00:00'));
+    if(diff<0 || diff>=days) return;
+    (s.entries||[]).forEach(function(e){
+      var groups=EXMAP[e.name]; if(!groups) return;
+      var v=exVolume(e); if(!v) return;
+      groups.forEach(function(g){ act[g]=(act[g]||0)+v; });
+    });
+  });
+  return act;
+}
+function activityBucket(act){
+  var max=0; Object.keys(act).forEach(function(g){ if(act[g]>max) max=act[g]; });
+  var b={};
+  Object.keys(GROUP_LABEL).forEach(function(g){
+    var v=act[g]||0;
+    b[g]= v<=0?'mai':(max&&v>=max*0.5?'molto':'poco');
+  });
+  return b;
+}
+function groupExercises(sessions, group){
+  var names={};
+  sessions.forEach(function(s){ (s.entries||[]).forEach(function(e){ var g=EXMAP[e.name]; if(g&&g.indexOf(group)>=0) names[e.name]=1; }); });
+  return Object.keys(names);
+}
+
+/* ---------- MUSCLE RENDER ---------- */
+var muscleSide='front';
+var muscleBuckets={};
+function muscleFill(group){
+  if(!group) return 'var(--line-soft)';
+  var b=muscleBuckets[group];
+  if(b==='molto') return 'var(--ember)';
+  if(b==='poco') return 'rgba(234,94,43,.42)';
+  return 'rgba(234,94,43,.10)';
+}
+function buildBody(side){
+  var data=side==='back'?BODY_BACK:BODY_FRONT;
+  var svg='<svg class="bodysvg" viewBox="0 0 100 200" preserveAspectRatio="xMidYMid meet">';
+  data.forEach(function(part){
+    var g=MUSCLE_GROUP[part.m];
+    var cls=g?('mz" data-group="'+g):'mz neutral';
+    part.pts.forEach(function(p){ svg+='<polygon class="'+cls+'" points="'+p+'" fill="'+muscleFill(g)+'"/>'; });
+  });
+  return svg+'</svg>';
+}
+function renderMuscleDetail(group){
+  var box=document.getElementById('muscleDetail'); if(!box) return;
+  if(!group){ box.innerHTML=''; return; }
+  var names=groupExercises(store.data, group), series=exerciseSeries(store.data);
+  var html='<div class="md-title">'+esc(GROUP_LABEL[group])+'</div>';
+  var any=false;
+  names.forEach(function(name){
+    var s=series[name]; if(!s) return; any=true;
+    var pct=pctChange(s), last=s[s.length-1], vals=s.map(function(p){return p.w;});
+    var pctTxt=pct===null?'—':(pct>0?'+':'')+pct+'%', pctCls=pct===null?'':(pct>0?'up':(pct<0?'down':''));
+    html+='<div class="ex-stat"><div class="es-top"><span class="es-name">'+esc(name)+'</span>'+
+      '<span class="es-pct '+pctCls+'">'+pctTxt+'</span></div>'+
+      '<div class="es-mid">'+sparkline(vals,150,26)+'</div>'+
+      '<div class="es-bot"><span>ultimo <b>'+esc(last.w)+'×'+esc(last.r)+'</b></span>'+
+      '<span>stima 1RM <b>'+last.e1rm+' kg</b></span></div></div>';
+  });
+  if(!any) html+='<div class="stats-empty">Nessun dato per questo gruppo.</div>';
+  box.innerHTML=html;
+}
+function renderMuscle(){
+  muscleBuckets=activityBucket(groupActivity(store.data,28));
+  var wrap=document.getElementById('muscleBody'); if(!wrap) return;
+  wrap.innerHTML=buildBody(muscleSide);
+  [].forEach.call(wrap.querySelectorAll('.mz[data-group]'),function(z){
+    z.onclick=function(){
+      var g=z.getAttribute('data-group');
+      [].forEach.call(wrap.querySelectorAll('.mz.sel'),function(x){x.classList.remove('sel');});
+      [].forEach.call(wrap.querySelectorAll('.mz[data-group="'+g+'"]'),function(x){x.classList.add('sel');});
+      renderMuscleDetail(g);
+    };
+  });
+}
+
 /* ---------- STATS RENDER ---------- */
 function sparkline(vals, w, h){
   if(!vals.length) return '';
@@ -1169,6 +1294,13 @@ function renderStats(){
   '</div>';
   var series=exerciseSeries(store.data);
   var names=Object.keys(series);
+  html+='<div class="sc-title block">Per muscolo</div>'+
+    '<div class="stat-card">'+
+      '<div class="bodytoggle" id="bodyToggle"><button class="bt on" data-side="front">Fronte</button><button class="bt" data-side="back">Retro</button></div>'+
+      '<div class="bodywrap" id="muscleBody"></div>'+
+      '<div class="bodylegend"><span><i class="lg molto"></i>molto</span><span><i class="lg poco"></i>poco</span><span><i class="lg mai"></i>mai</span></div>'+
+      '<div class="muscle-detail" id="muscleDetail"></div>'+
+    '</div>';
   html+='<div class="sc-title block">Progressione per esercizio</div>';
   if(!names.length){ html+='<div class="stats-empty">Salva qualche carico per vedere le progressioni.</div>'; }
   names.forEach(function(name){
@@ -1185,6 +1317,13 @@ function renderStats(){
     '</div>';
   });
   root.innerHTML=html;
+  var bt=document.getElementById('bodyToggle');
+  if(bt){ [].forEach.call(bt.querySelectorAll('.bt'),function(b){ b.onclick=function(){
+    [].forEach.call(bt.querySelectorAll('.bt'),function(x){x.classList.remove('on');});
+    b.classList.add('on'); muscleSide=b.dataset.side; renderMuscle();
+    document.getElementById('muscleDetail').innerHTML='';
+  }; }); }
+  renderMuscle();
 }
 
 /* copy summary for coach */
