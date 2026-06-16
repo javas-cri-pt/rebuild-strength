@@ -367,6 +367,11 @@
   .ex-sub{width:100%;background:var(--card);border:1px solid var(--line);color:var(--ink-dim);border-radius:9px;padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:600;color-scheme:dark;-webkit-appearance:none;appearance:none}
   .ex-sub:focus{outline:none;border-color:var(--ember)}
   .restore-scheda{display:block;width:100%;background:var(--gold-soft);border:1px solid rgba(226,162,62,.4);color:var(--gold);font-family:inherit;font-size:12.5px;font-weight:700;border-radius:10px;padding:9px;margin-bottom:12px;cursor:pointer}
+  .lx-actions{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap;align-items:center}
+  .lx-btn{flex:0 0 auto;background:var(--card);border:1px solid var(--line);color:var(--ink-dim);border-radius:9px;padding:7px 11px;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;line-height:1}
+  .lx-btn:hover{border-color:var(--ember);color:var(--ember-2)}
+  .lx-btn.del:hover{border-color:#E0573C;color:#E0876C}
+  .lx-btn.add-set{margin-left:auto}
   @keyframes rise{to{opacity:1;transform:translateY(0)}}
 
   /* ---------- PRINT → documento chiaro completo ---------- */
@@ -1020,6 +1025,22 @@ function loadDay(){
   buildForm(); restoreDraftInto();
 }
 function rebuildKeepingValues(){ saveDraft(); buildForm(); restoreDraftInto(); }
+function moveExercise(idx, dir){
+  var j=idx+dir;
+  while(j>=0 && j<formModel.length && formModel[j].cardio) j+=dir;
+  if(j<0 || j>=formModel.length) return;
+  var t=formModel[idx]; formModel[idx]=formModel[j]; formModel[j]=t;
+  rebuildKeepingValues();
+}
+function addSet(idx){ var ex=formModel[idx]; if(!ex) return; ex.sets=(ex.sets||0)+1; rebuildKeepingValues(); }
+function deleteExercise(idx){
+  var ex=formModel[idx]; if(!ex) return;
+  if(!window.confirm('Eliminare "'+ex.n+'"?')) return;
+  var sempre=window.confirm('Rimuovere SEMPRE dalla scheda '+state.day+'?\n\nOK = sempre\nAnnulla = solo per oggi');
+  formModel.splice(idx,1);
+  if(sempre){ SCHEDE[state.day]=formModel.map(cloneEx); persistSchede(); }
+  rebuildKeepingValues();
+}
 var ALT={
   'Leg Press o Goblet Squat':['Hack Squat','Squat guidato','Affondi','Bulgarian Split Squat'],
   'Chest Press macchina o Panca Manubri':['Panca piana','Panca inclinata manubri','Push-up'],
@@ -1101,7 +1122,11 @@ function buildForm(){
     wrap.innerHTML='<div class="lx-head"><div class="lx-name"><span class="num">'+n+'</span>'+esc(e.n)+'</div>'+
       '<span class="lx-scheme">'+esc(e.s)+'</span></div>'+lastLine+
       '<div class="sets-row">'+rows+'</div>'+
-      '<div class="lx-tools"><select class="ex-sub" aria-label="Sostituisci esercizio">'+opts+'</select></div>';
+      '<div class="lx-tools"><select class="ex-sub" aria-label="Sostituisci esercizio">'+opts+'</select>'+
+      '<div class="lx-actions"><button type="button" class="lx-btn mv-up" aria-label="Sposta su">↑</button>'+
+      '<button type="button" class="lx-btn mv-dn" aria-label="Sposta giù">↓</button>'+
+      '<button type="button" class="lx-btn add-set">+ serie</button>'+
+      '<button type="button" class="lx-btn del" aria-label="Elimina">×</button></div></div>';
     var selEl=wrap.querySelector('.ex-sub');
     selEl.onchange=function(){
       var v=this.value; this.value='';
@@ -1109,6 +1134,10 @@ function buildForm(){
       if(v==='__altro'){ var nm=window.prompt('Nome del nuovo esercizio:'); if(nm && nm.trim()) applySubstitute(idx, nm.trim()); return; }
       applySubstitute(idx, v);
     };
+    wrap.querySelector('.mv-up').onclick=function(){ moveExercise(idx,-1); };
+    wrap.querySelector('.mv-dn').onclick=function(){ moveExercise(idx,1); };
+    wrap.querySelector('.add-set').onclick=function(){ addSet(idx); };
+    wrap.querySelector('.del').onclick=function(){ deleteExercise(idx); };
     form.appendChild(wrap);
   });
 }
