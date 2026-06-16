@@ -363,6 +363,10 @@
   .wu-row .wu-del:hover{border-color:var(--ember);color:var(--ember-2)}
   .wu-row input:focus{outline:none;border-color:var(--ember)}
   .wu-add{background:none;border:none;color:var(--ember-2);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:2px 0}
+  .lx-tools{margin-top:10px}
+  .ex-sub{width:100%;background:var(--card);border:1px solid var(--line);color:var(--ink-dim);border-radius:9px;padding:8px 10px;font-family:inherit;font-size:12.5px;font-weight:600;color-scheme:dark;-webkit-appearance:none;appearance:none}
+  .ex-sub:focus{outline:none;border-color:var(--ember)}
+  .restore-scheda{display:block;width:100%;background:var(--gold-soft);border:1px solid rgba(226,162,62,.4);color:var(--gold);font-family:inherit;font-size:12.5px;font-weight:700;border-radius:10px;padding:9px;margin-bottom:12px;cursor:pointer}
   @keyframes rise{to{opacity:1;transform:translateY(0)}}
 
   /* ---------- PRINT → documento chiaro completo ---------- */
@@ -882,7 +886,8 @@ function readForm(){
     entries.push({ name:box.dataset.ex, sets:sets });
   });
   return { day:state.day, date:(document.getElementById('sessDate')||{}).value||'',
-           feeling:state.feeling, note:document.getElementById('sessNote').value, warmup:readWarmup(), entries:entries };
+           feeling:state.feeling, note:document.getElementById('sessNote').value, warmup:readWarmup(),
+           model: formModel.map(cloneEx), entries:entries };
 }
 function saveDraft(){ if(!store.ok) return; try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(readForm())); }catch(e){} }
 function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
@@ -890,8 +895,8 @@ function restoreDraftInto(){
   var raw; try{ raw=localStorage.getItem(DRAFT_KEY); }catch(e){ return; }
   if(!raw) return;
   var d; try{ d=JSON.parse(raw); }catch(e){ return; }
-  if(!d || d.day!==state.day || !d.entries) return;
-  var byName={}; d.entries.forEach(function(e){ byName[e.name]=e.sets; });
+  if(!d || d.day!==state.day) return;
+  var byName={}; (d.entries||[]).forEach(function(e){ byName[e.name]=e.sets; });
   [].forEach.call(document.querySelectorAll('#logForm .log-ex'),function(box){
     var sets=byName[box.dataset.ex]; if(!sets) return;
     var lines=box.querySelectorAll('.set-line');
@@ -971,7 +976,7 @@ Object.keys(DAYS).forEach(function(code){
   var o=document.createElement('option'); o.value=code; o.textContent=code+' · '+DAYS[code].title; sel.appendChild(o);
 });
 sel.value=state.day;
-sel.onchange=function(){ state.day=sel.value; buildForm(); };
+sel.onchange=function(){ state.day=sel.value; loadDay(); };
 
 /* date default = today */
 var dt=document.getElementById('sessDate');
@@ -1000,6 +1005,58 @@ function lastSetsFor(sess, name){
 }
 
 /* day banner + form */
+/* ---------- SCHEDE (dati editabili) ---------- */
+var SCHEDE={}; try{ var _rawS=localStorage.getItem('rebuild_strength_schede_v1'); if(_rawS) SCHEDE=JSON.parse(_rawS)||{}; }catch(e){}
+function persistSchede(){ try{ localStorage.setItem('rebuild_strength_schede_v1', JSON.stringify(SCHEDE)); }catch(e){} }
+function cloneEx(e){ return {n:e.n,s:e.s,sets:e.sets,note:e.note,illus:e.illus,cardio:e.cardio,group:e.group}; }
+function baseDayEx(code){ return (SCHEDE[code]||DAYS[code].ex); }
+var formModel=[];
+function initFormModel(){ formModel = baseDayEx(state.day).map(cloneEx); }
+function exGroups(ex){ return ex.group || (typeof EXMAP!=='undefined'?EXMAP[ex.n]:null) || null; }
+function loadDay(){
+  var dr=null; try{ var rw=localStorage.getItem(DRAFT_KEY); if(rw) dr=JSON.parse(rw); }catch(e){}
+  if(dr && dr.day===state.day && dr.model && dr.model.length){ formModel=dr.model.map(cloneEx); }
+  else { initFormModel(); }
+  buildForm(); restoreDraftInto();
+}
+function rebuildKeepingValues(){ saveDraft(); buildForm(); restoreDraftInto(); }
+var ALT={
+  'Leg Press o Goblet Squat':['Hack Squat','Squat guidato','Affondi','Bulgarian Split Squat'],
+  'Chest Press macchina o Panca Manubri':['Panca piana','Panca inclinata manubri','Push-up'],
+  'Leg Extension':['Sissy squat','Leg press','Hack squat'],
+  'Lat Machine presa neutra':['Trazioni assistite','Pulley','Rematore','Lat machine presa larga'],
+  'Bulgarian Split Squat':['Affondi camminati','Step-up','Pistol squat','Split squat'],
+  'Alzate Laterali':['Alzate ai cavi','Arnold press','Alzate frontali'],
+  'Dead Bug':['Plank','Bird dog','Pallof press','Hollow hold'],
+  'Hip Thrust':['Glute bridge','Stacco rumeno','Hip thrust monopodalico'],
+  'Rematore supportato o macchina':['Pulley','Lat machine','Rematore manubrio','T-bar row'],
+  'Push-up inclinati o Chest Press leggera':['Push-up','Chest press macchina','Panca manubri leggera'],
+  'Step-up':['Pistol squat','Affondi camminati','Bulgarian Split Squat','Salita al box'],
+  'Leg Curl':['Stacco rumeno','Nordic curl','Leg curl in piedi'],
+  'Face Pull':['Reverse fly','Alzate posteriori','Band pull-apart'],
+  'Curl Manubri':['Curl bilanciere','Curl ai cavi','Hammer curl'],
+  'Hack Squat o Squat guidato':['Leg press','Goblet squat','Squat libero','Affondi'],
+  'Panca inclinata Manubri':['Panca piana manubri','Chest press','Panca inclinata bilanciere'],
+  'Trazioni assistite':['Lat machine','Pulley','Rematore','Australian pull-up'],
+  'Affondi camminati':['Affondi sul posto','Step-up','Bulgarian Split Squat','Pistol squat'],
+  'Cable Row':['Pulley','Rematore manubrio','Lat machine','T-bar row'],
+  'Shoulder Press leggera':['Landmine press','Alzate laterali','Arnold press'],
+  'Push Down ai cavi':['French press','Dips','Estensioni manubrio','Kickback']
+};
+function applySubstitute(idx, newName){
+  var ex=formModel[idx]; if(!ex||!newName) return;
+  var inherited=exGroups(ex);
+  var sempre=window.confirm('Sostituire "'+ex.n+'" con "'+newName+'".\n\nOK = SEMPRE (aggiorna la scheda)\nAnnulla = solo per oggi');
+  ex.n=newName; ex.group=inherited||undefined; ex.illus=undefined;
+  if(sempre){ SCHEDE[state.day]=formModel.map(cloneEx); persistSchede(); }
+  rebuildKeepingValues();
+}
+function restoreSchedaDefault(){
+  if(!SCHEDE[state.day]) return;
+  if(!window.confirm('Ripristinare la scheda '+state.day+' originale? Le modifiche permanenti a questa scheda verranno rimosse.')) return;
+  delete SCHEDE[state.day]; persistSchede(); initFormModel(); buildForm(); restoreDraftInto();
+}
+
 function buildBanner(){
   var d=DAYS[state.day];
   document.getElementById('dayBanner').innerHTML=
@@ -1009,13 +1066,18 @@ function buildBanner(){
 function buildForm(){
   buildBanner();
   var form=document.getElementById('logForm'); form.innerHTML='';
+  if(SCHEDE[state.day]){
+    var rb=document.createElement('button'); rb.type='button'; rb.className='restore-scheda';
+    rb.textContent='↺ Ripristina scheda '+state.day+' originale'; rb.onclick=restoreSchedaDefault;
+    form.appendChild(rb);
+  }
   var lastSess=lastSessionFor(state.day);
-  var d=DAYS[state.day]; var n=0;
-  d.ex.forEach(function(e){
+  var n=0;
+  formModel.forEach(function(e, idx){
     if(e.cardio) return;
     n++;
     var prevSets=lastSetsFor(lastSess, e.n);
-    var wrap=document.createElement('div'); wrap.className='log-ex'; wrap.dataset.ex=e.n;
+    var wrap=document.createElement('div'); wrap.className='log-ex'; wrap.dataset.ex=e.n; wrap.dataset.idx=idx;
     var lastLine='';
     if(prevSets && prevSets.length){
       var parts=prevSets.map(function(x){return esc(x.w||'–')+'×'+esc(x.r||'–');}).join(' · ');
@@ -1032,15 +1094,27 @@ function buildForm(){
         '<input type="number" inputmode="decimal" placeholder="'+phW+'" class="w"><span class="u">kg</span>'+
         '<input type="number" inputmode="numeric" placeholder="'+phR+'" class="r"><span class="u">rip</span></div>';
     }
-    wrap.innerHTML='<div class="lx-head"><div class="lx-name"><span class="num">'+n+'</span>'+e.n+'</div>'+
-      '<span class="lx-scheme">'+e.s+'</span></div>'+lastLine+
-      '<div class="sets-row">'+rows+'</div>';
+    var alts=ALT[e.n]||[];
+    var opts='<option value="">Sostituisci…</option>';
+    alts.forEach(function(a){ opts+='<option value="'+esc(a)+'">'+esc(a)+'</option>'; });
+    opts+='<option value="__altro">Altro…</option>';
+    wrap.innerHTML='<div class="lx-head"><div class="lx-name"><span class="num">'+n+'</span>'+esc(e.n)+'</div>'+
+      '<span class="lx-scheme">'+esc(e.s)+'</span></div>'+lastLine+
+      '<div class="sets-row">'+rows+'</div>'+
+      '<div class="lx-tools"><select class="ex-sub" aria-label="Sostituisci esercizio">'+opts+'</select></div>';
+    var selEl=wrap.querySelector('.ex-sub');
+    selEl.onchange=function(){
+      var v=this.value; this.value='';
+      if(!v) return;
+      if(v==='__altro'){ var nm=window.prompt('Nome del nuovo esercizio:'); if(nm && nm.trim()) applySubstitute(idx, nm.trim()); return; }
+      applySubstitute(idx, v);
+    };
     form.appendChild(wrap);
   });
-  restoreDraftInto();
 }
 setWarmup([]);
-buildForm();
+initFormModel();
+loadDay();
 
 var _draftT;
 function scheduleDraft(){ clearTimeout(_draftT); _draftT=setTimeout(saveDraft, 400); }
@@ -1060,7 +1134,7 @@ document.getElementById('saveBtn').onclick=function(){
       var r=line.querySelector('.r').value.trim();
       if(w||r) sets.push({w:w,r:r});
     });
-    if(sets.length) entries.push({name:box.dataset.ex, sets:sets});
+    if(sets.length){ var _mi=formModel[box.dataset.idx*1]; var _g=_mi?exGroups(_mi):null; var _ent={name:box.dataset.ex, sets:sets}; if(_g) _ent.group=_g; entries.push(_ent); }
   });
   if(!entries.length){ toast('Inserisci almeno un dato'); return; }
   var sess={ id:Date.now(), date:dt.value, day:state.day, dayTitle:DAYS[state.day].title,
@@ -1068,14 +1142,14 @@ document.getElementById('saveBtn').onclick=function(){
   store.data.unshift(sess); store.data=dedupeByDay(store.data); clearDraft(); persist(); renderHist();
   document.getElementById('sessNote').value=''; state.feeling='';
   [].forEach.call(fs.children,function(x){x.classList.remove('on');});
-  buildForm(); setWarmup([]);
+  initFormModel(); buildForm(); setWarmup([]);
   toast('Sessione salvata ✓');
   document.getElementById('histList').scrollIntoView({behavior:'smooth',block:'nearest'});
 };
 
 document.getElementById('resetBtn').onclick=function(){
   clearDraft();
-  buildForm(); setWarmup([]); document.getElementById('sessNote').value=''; state.feeling='';
+  initFormModel(); buildForm(); setWarmup([]); document.getElementById('sessNote').value=''; state.feeling='';
   [].forEach.call(fs.children,function(x){x.classList.remove('on');});
 };
 
@@ -1112,7 +1186,7 @@ renderHist();
 
 /* ---------- EXPORT (snapshot completo) ---------- */
 function buildSnapshot(){
-  return { app:'rebuild-strength', version:3, exportedAt:new Date().toISOString(), sessions:store.data };
+  return { app:'rebuild-strength', version:3, exportedAt:new Date().toISOString(), sessions:store.data, schede:SCHEDE };
 }
 function pad2(n){ return (n<10?'0':'')+n; }
 function exportFileName(){
@@ -1144,7 +1218,7 @@ function importData(file){
     var ok=window.confirm('Sostituire lo storico attuale ('+store.data.length+
       ' sessioni) con il backup ('+parsed.sessions.length+' sessioni)?');
     if(!ok) return;
-    store.data=dedupeByDay(parsed.sessions); persist(); renderHist(); buildForm();
+    store.data=dedupeByDay(parsed.sessions); if(parsed.schede){ SCHEDE=parsed.schede; persistSchede(); } persist(); renderHist(); initFormModel(); buildForm();
     toast('Importate '+store.data.length+' sessioni ✓');
   };
   reader.readAsText(file);
@@ -1236,7 +1310,7 @@ function groupActivity(sessions, days){
     var diff=daysBetween(today, new Date(s.date+'T00:00:00'));
     if(diff<0 || diff>=days) return;
     (s.entries||[]).forEach(function(e){
-      var groups=EXMAP[e.name]; if(!groups) return;
+      var groups=e.group||EXMAP[e.name]; if(!groups) return;
       var v=exVolume(e); if(!v) return;
       groups.forEach(function(g){ act[g]=(act[g]||0)+v; });
     });
@@ -1254,7 +1328,7 @@ function activityBucket(act){
 }
 function groupExercises(sessions, group){
   var names={};
-  sessions.forEach(function(s){ (s.entries||[]).forEach(function(e){ var g=EXMAP[e.name]; if(g&&g.indexOf(group)>=0) names[e.name]=1; }); });
+  sessions.forEach(function(s){ (s.entries||[]).forEach(function(e){ var g=e.group||EXMAP[e.name]; if(g&&g.indexOf(group)>=0) names[e.name]=1; }); });
   return Object.keys(names);
 }
 
