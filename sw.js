@@ -1,4 +1,4 @@
-var CACHE = 'rebuild-strength-v4';
+var CACHE = 'rebuild-strength-v5';
 var ASSETS = [
   '.', 'index.html', 'manifest.json', 'bodymap.js',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'

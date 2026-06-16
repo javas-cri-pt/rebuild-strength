@@ -352,6 +352,17 @@
   .muscle-detail{margin-top:14px}
   .muscle-detail:empty{display:none}
   .md-title{font-family:'Fraunces',serif;font-weight:600;font-size:16px;margin:4px 0 10px;color:var(--gold)}
+  .warmup-box{border:1px dashed var(--line);border-radius:14px;padding:13px 14px;margin:4px 0 6px;background:var(--bg2)}
+  .wu-head{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint);font-weight:700}
+  .wu-head span{display:block;text-transform:none;letter-spacing:0;font-weight:500;font-size:11.5px;color:var(--ink-faint);margin-top:2px;margin-bottom:8px}
+  .wu-row{display:flex;align-items:center;gap:8px;margin-bottom:8px}
+  .wu-row .wu-what{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 11px;font-family:inherit;font-size:14.5px}
+  .wu-row .wu-min{width:62px;flex:0 0 auto;background:var(--card);border:1px solid var(--line);color:var(--ink);border-radius:10px;padding:10px 6px;font-family:inherit;font-size:14.5px;text-align:center}
+  .wu-row .wu-u{font-size:11.5px;color:var(--ink-faint)}
+  .wu-row .wu-del{flex:0 0 auto;width:30px;height:30px;border-radius:9px;background:var(--card);border:1px solid var(--line);color:var(--ink-faint);font-size:16px;cursor:pointer;line-height:1}
+  .wu-row .wu-del:hover{border-color:var(--ember);color:var(--ember-2)}
+  .wu-row input:focus{outline:none;border-color:var(--ember)}
+  .wu-add{background:none;border:none;color:var(--ember-2);font-family:inherit;font-size:13px;font-weight:700;cursor:pointer;padding:2px 0}
   @keyframes rise{to{opacity:1;transform:translateY(0)}}
 
   /* ---------- PRINT → documento chiaro completo ---------- */
@@ -426,6 +437,12 @@
       </div>
 
       <div class="day-banner" id="dayBanner"></div>
+
+      <div class="warmup-box">
+        <div class="wu-head">Riscaldamento <span>facoltativo · non conta nei progressi</span></div>
+        <div id="warmupList"></div>
+        <button type="button" class="wu-add" id="warmupAdd">+ aggiungi voce</button>
+      </div>
 
       <div id="logForm"></div>
 
@@ -865,7 +882,7 @@ function readForm(){
     entries.push({ name:box.dataset.ex, sets:sets });
   });
   return { day:state.day, date:(document.getElementById('sessDate')||{}).value||'',
-           feeling:state.feeling, note:document.getElementById('sessNote').value, entries:entries };
+           feeling:state.feeling, note:document.getElementById('sessNote').value, warmup:readWarmup(), entries:entries };
 }
 function saveDraft(){ if(!store.ok) return; try{ localStorage.setItem(DRAFT_KEY, JSON.stringify(readForm())); }catch(e){} }
 function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
@@ -883,11 +900,39 @@ function restoreDraftInto(){
       if(sets[i].r) lines[i].querySelector('.r').value=sets[i].r;
     }
   });
+  setWarmup(d.warmup||[]);
   if(d.note) document.getElementById('sessNote').value=d.note;
   if(d.feeling){
     state.feeling=d.feeling;
     [].forEach.call(fs.children,function(b){ b.classList.toggle('on', b.dataset.f===d.feeling); });
   }
+}
+
+/* ---------- RISCALDAMENTO ---------- */
+function warmupRow(w,m){
+  var div=document.createElement('div'); div.className='wu-row';
+  div.innerHTML='<input class="wu-what" placeholder="es. Rematori"><input class="wu-min" type="number" inputmode="numeric" placeholder="min"><span class="wu-u">min</span><button type="button" class="wu-del" aria-label="Rimuovi">×</button>';
+  div.querySelector('.wu-what').value=w||'';
+  div.querySelector('.wu-min').value=m||'';
+  div.querySelector('.wu-del').onclick=function(){
+    var list=document.getElementById('warmupList'); list.removeChild(div);
+    if(!list.querySelectorAll('.wu-row').length) addWarmupRow();
+    saveDraft();
+  };
+  return div;
+}
+function addWarmupRow(w,m){ document.getElementById('warmupList').appendChild(warmupRow(w,m)); }
+function readWarmup(){
+  var out=[];
+  [].forEach.call(document.querySelectorAll('#warmupList .wu-row'),function(r){
+    var w=r.querySelector('.wu-what').value.trim(), m=r.querySelector('.wu-min').value.trim();
+    if(w||m) out.push({w:w,m:m});
+  });
+  return out;
+}
+function setWarmup(arr){
+  var list=document.getElementById('warmupList'); if(!list) return; list.innerHTML='';
+  if(arr && arr.length){ arr.forEach(function(x){ addWarmupRow(x.w,x.m); }); } else { addWarmupRow(); }
 }
 
 /* ---------- DEDUP per giorno ---------- */
@@ -994,6 +1039,7 @@ function buildForm(){
   });
   restoreDraftInto();
 }
+setWarmup([]);
 buildForm();
 
 var _draftT;
@@ -1001,6 +1047,8 @@ function scheduleDraft(){ clearTimeout(_draftT); _draftT=setTimeout(saveDraft, 4
 document.getElementById('logForm').addEventListener('input', scheduleDraft);
 document.getElementById('sessNote').addEventListener('input', scheduleDraft);
 document.getElementById('sessDate').addEventListener('change', scheduleDraft);
+document.getElementById('warmupList').addEventListener('input', scheduleDraft);
+document.getElementById('warmupAdd').onclick=function(){ addWarmupRow(); saveDraft(); };
 
 /* save */
 document.getElementById('saveBtn').onclick=function(){
@@ -1016,18 +1064,18 @@ document.getElementById('saveBtn').onclick=function(){
   });
   if(!entries.length){ toast('Inserisci almeno un dato'); return; }
   var sess={ id:Date.now(), date:dt.value, day:state.day, dayTitle:DAYS[state.day].title,
-    feeling:state.feeling, note:document.getElementById('sessNote').value.trim(), entries:entries };
+    feeling:state.feeling, note:document.getElementById('sessNote').value.trim(), warmup:readWarmup(), entries:entries };
   store.data.unshift(sess); store.data=dedupeByDay(store.data); clearDraft(); persist(); renderHist();
   document.getElementById('sessNote').value=''; state.feeling='';
   [].forEach.call(fs.children,function(x){x.classList.remove('on');});
-  buildForm();
+  buildForm(); setWarmup([]);
   toast('Sessione salvata ✓');
   document.getElementById('histList').scrollIntoView({behavior:'smooth',block:'nearest'});
 };
 
 document.getElementById('resetBtn').onclick=function(){
   clearDraft();
-  buildForm(); document.getElementById('sessNote').value=''; state.feeling='';
+  buildForm(); setWarmup([]); document.getElementById('sessNote').value=''; state.feeling='';
   [].forEach.call(fs.children,function(x){x.classList.remove('on');});
 };
 
@@ -1046,7 +1094,8 @@ function renderHist(){
   store.data.forEach(function(s){
     var item=document.createElement('div'); item.className='hist-item';
     var feel=s.feeling?'<span class="feel">'+esc(s.feeling)+'</span>':'';
-    var det=sessLine(s).replace(/\n/g,'<br>')+(s.note?'<br><em style="color:var(--ink-faint)">'+esc(s.note)+'</em>':'');
+    var wuTxt=(s.warmup&&s.warmup.length)?'<span style="color:var(--ember-2)">Risc.:</span> '+s.warmup.map(function(x){return esc(x.w)+(x.m?' '+esc(x.m)+'′':'');}).join(', ')+'<br>':'';
+    var det=wuTxt+sessLine(s).replace(/\n/g,'<br>')+(s.note?'<br><em style="color:var(--ink-faint)">'+esc(s.note)+'</em>':'');
     item.innerHTML='<div class="hh"><div class="meta">Giorno '+esc(s.day)+' · '+esc(s.dayTitle)+
       '<small>'+esc(fmt(s.date))+'</small></div>'+feel+'</div>'+
       '<div class="det">'+det+'</div>'+
@@ -1333,6 +1382,7 @@ document.getElementById('copyBtn').onclick=function(){
   recent.forEach(function(s){
     txt+='\n— Giorno '+s.day+' ('+s.dayTitle+') · '+fmt(s.date);
     if(s.feeling) txt+=' · sensazione: '+s.feeling;
+    if(s.warmup&&s.warmup.length) txt+='\nRiscaldamento: '+s.warmup.map(function(x){return x.w+(x.m?' '+x.m+' min':'');}).join(', ');
     txt+='\n'+sessLine(s)+'\n';
     if(s.note) txt+='Note: '+s.note+'\n';
   });
