@@ -1013,10 +1013,10 @@ function lastSetsFor(sess, name){
 /* ---------- SCHEDE (dati editabili) ---------- */
 var SCHEDE={}; try{ var _rawS=localStorage.getItem('rebuild_strength_schede_v1'); if(_rawS) SCHEDE=JSON.parse(_rawS)||{}; }catch(e){}
 function persistSchede(){ try{ localStorage.setItem('rebuild_strength_schede_v1', JSON.stringify(SCHEDE)); }catch(e){} }
-function cloneEx(e){ return {n:e.n,s:e.s,sets:e.sets,note:e.note,illus:e.illus,cardio:e.cardio,group:e.group}; }
+function cloneEx(e){ return {n:e.n,s:e.s,sets:e.sets,note:e.note,illus:e.illus,cardio:e.cardio,group:e.group,base:e.base}; }
 function baseDayEx(code){ return (SCHEDE[code]||DAYS[code].ex); }
 var formModel=[];
-function initFormModel(){ formModel = baseDayEx(state.day).map(cloneEx); }
+function initFormModel(){ formModel = baseDayEx(state.day).map(function(e){ var c=cloneEx(e); if(!c.base) c.base=c.n; return c; }); }
 function exGroups(ex){ return ex.group || (typeof EXMAP!=='undefined'?EXMAP[ex.n]:null) || null; }
 function loadDay(){
   var dr=null; try{ var rw=localStorage.getItem(DRAFT_KEY); if(rw) dr=JSON.parse(rw); }catch(e){}
@@ -1068,7 +1068,7 @@ function applySubstitute(idx, newName){
   var ex=formModel[idx]; if(!ex||!newName) return;
   var inherited=exGroups(ex);
   var sempre=window.confirm('Sostituire "'+ex.n+'" con "'+newName+'".\n\nOK = SEMPRE (aggiorna la scheda)\nAnnulla = solo per oggi');
-  ex.n=newName; ex.group=inherited||undefined; ex.illus=undefined;
+  ex.base=ex.base||ex.n; ex.n=newName; ex.group=inherited||undefined; ex.illus=undefined;
   if(sempre){ SCHEDE[state.day]=formModel.map(cloneEx); persistSchede(); }
   rebuildKeepingValues();
 }
@@ -1115,9 +1115,9 @@ function buildForm(){
         '<input type="number" inputmode="decimal" placeholder="'+phW+'" class="w"><span class="u">kg</span>'+
         '<input type="number" inputmode="numeric" placeholder="'+phR+'" class="r"><span class="u">rip</span></div>';
     }
-    var alts=ALT[e.n]||[];
-    var opts='<option value="">Sostituisci…</option>';
-    alts.forEach(function(a){ opts+='<option value="'+esc(a)+'">'+esc(a)+'</option>'; });
+    var famKey=e.base||e.n; var fam=[famKey].concat(ALT[famKey]||[]);
+    var seenA={}; var opts='<option value="">Sostituisci…</option>';
+    fam.forEach(function(a){ if(a && a!==e.n && !seenA[a]){ seenA[a]=1; opts+='<option value="'+esc(a)+'">'+esc(a)+'</option>'; } });
     opts+='<option value="__altro">Altro…</option>';
     wrap.innerHTML='<div class="lx-head"><div class="lx-name"><span class="num">'+n+'</span>'+esc(e.n)+'</div>'+
       '<span class="lx-scheme">'+esc(e.s)+'</span></div>'+lastLine+
