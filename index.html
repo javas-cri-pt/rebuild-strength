@@ -372,6 +372,9 @@
   .lx-btn:hover{border-color:var(--ember);color:var(--ember-2)}
   .lx-btn.del:hover{border-color:#E0573C;color:#E0876C}
   .lx-btn.add-set{margin-left:auto}
+  .ai-export{margin-top:26px;text-align:center}
+  .ai-export .btn{width:100%}
+  .ai-hint{font-size:11.5px;color:var(--ink-faint);margin-top:8px}
   @keyframes rise{to{opacity:1;transform:translateY(0)}}
 
   /* ---------- PRINT → documento chiaro completo ---------- */
@@ -1468,7 +1471,9 @@ function renderStats(){
         '<span>stima 1RM <b>'+last.e1rm+' kg</b></span></div>'+
     '</div>';
   });
+  html+='<div class="ai-export"><button class="btn btn-primary" id="aiExportBtn">📋 Esporta per l\'AI</button><p class="ai-hint">Copia un riepilogo pronto da incollare a Claude/Codex.</p></div>';
   root.innerHTML=html;
+  var aeb=document.getElementById('aiExportBtn'); if(aeb) aeb.onclick=doAIExport;
   var bt=document.getElementById('bodyToggle');
   if(bt){ [].forEach.call(bt.querySelectorAll('.bt'),function(b){ b.onclick=function(){
     [].forEach.call(bt.querySelectorAll('.bt'),function(x){x.classList.remove('on');});
@@ -1476,6 +1481,75 @@ function renderStats(){
     document.getElementById('muscleDetail').innerHTML='';
   }; }); }
   renderMuscle();
+}
+
+/* ---------- ESPORTA PER L'AI ---------- */
+function loadReviewAt(){ try{ var v=localStorage.getItem('rebuild_strength_review_v1'); return v?(v*1):0; }catch(e){ return 0; } }
+function saveReviewAt(v){ try{ localStorage.setItem('rebuild_strength_review_v1', String(v)); }catch(e){} }
+function tsToDM(ts){ var d=new Date(ts); return ('0'+d.getDate()).slice(-2)+'/'+('0'+(d.getMonth()+1)).slice(-2); }
+function aiSessionBlock(s){
+  var L=[];
+  L.push('- '+fmt(s.date)+' · Giorno '+s.day+' ('+s.dayTitle+')'+(s.feeling?' · sensazione: '+s.feeling:''));
+  if(s.warmup&&s.warmup.length) L.push('  - Riscaldamento: '+s.warmup.map(function(x){return x.w+(x.m?' '+x.m+' min':'');}).join(', '));
+  (s.entries||[]).forEach(function(e){ L.push('  - '+e.name+': '+e.sets.map(function(x){return (x.w||'–')+'×'+(x.r||'–');}).join(' · ')); });
+  if(s.note) L.push('  - Note: '+s.note);
+  return L.join('\n');
+}
+function buildAIReport(){
+  var reg=regularity(store.data); var out=[];
+  out.push('# Rebuild Strength — aggiornamento per il coach');
+  out.push('');
+  out.push('Atleta in ricostruzione forza. ATTENZIONE: ernia ombelicale + PCOS → niente apnea/Valsalva né massimali, respira nello sforzo, recupero gestito. Obiettivo: più forte e muscolosa (non dimagrire).');
+  out.push('');
+  out.push('## Costanza');
+  out.push('- Sessioni/settimana (ultime 4): '+reg.perWeek4);
+  out.push('- Giorni dall\'ultimo allenamento: '+(reg.daysSinceLast===null?'–':reg.daysSinceLast));
+  out.push('- Totale sessioni registrate: '+reg.total);
+  out.push('');
+  var rev=loadReviewAt();
+  var chrono=store.data.slice().sort(function(a,b){return (a.id||0)-(b.id||0);});
+  var fresh=chrono.filter(function(s){ return !rev || (s.id||0)>rev; });
+  if(rev){
+    out.push('## Novità dall\'ultima revisione (dal '+tsToDM(rev)+')');
+    if(fresh.length) fresh.forEach(function(s){ out.push(aiSessionBlock(s)); });
+    else out.push('_Nessun allenamento nuovo dall\'ultima revisione._');
+  } else {
+    out.push('## Allenamenti (prima revisione: storico completo)');
+    if(chrono.length) chrono.forEach(function(s){ out.push(aiSessionBlock(s)); });
+    else out.push('_Ancora nessun allenamento._');
+  }
+  out.push('');
+  out.push('## Progressione per esercizio (quadro completo)');
+  var series=exerciseSeries(store.data); var names=Object.keys(series);
+  if(!names.length) out.push('_Ancora nessun dato._');
+  names.forEach(function(nm){
+    var s=series[nm], first=s[0], last=s[s.length-1], pc=pctChange(s);
+    var pcTxt=pc===null?'':' ('+(pc>0?'+':'')+pc+'%)';
+    out.push('- '+nm+': '+first.w+' → '+last.w+' kg'+pcTxt+' · 1RM stim. ~'+last.e1rm+' kg · ultime: '+last.w+'×'+last.r);
+  });
+  out.push('');
+  var sk=Object.keys(SCHEDE);
+  if(sk.length){
+    out.push('## Modifiche alle schede');
+    sk.forEach(function(code){
+      var cur=SCHEDE[code].filter(function(e){return !e.cardio;}).map(function(e){return e.n;});
+      out.push('- Giorno '+code+' (personalizzata): '+cur.join(', '));
+    });
+    out.push('');
+  }
+  out.push('## Cosa vorrei sapere');
+  out.push('Fammi da personal trainer. Valuta progressione e se sono pronta ad aumentare i carichi **in sicurezza** (occhio a ernia ombelicale e PCOS), la costanza/recupero, e dimmi cosa cambiare la prossima settimana (esercizi, serie, carichi). Segnala qualsiasi cosa rischiosa.');
+  return out.join('\n');
+}
+function doAIExport(){
+  if(!store.data.length){ toast('Niente da esportare'); return; }
+  var txt=buildAIReport();
+  var done=function(){
+    toast('Report AI copiato ✓');
+    if(window.confirm('Report copiato negli appunti.\n\nSegnare come revisione inviata all\'AI?\n(così la prossima volta vedrai solo le novità)')) saveReviewAt(Date.now());
+  };
+  if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(txt).then(done).catch(function(){ fallbackCopy(txt); done(); }); }
+  else { fallbackCopy(txt); done(); }
 }
 
 /* copy summary for coach */
